@@ -1,13 +1,13 @@
 
-const CACHE_NAME = 'cupra-hybrid-tracker-v2';
+const CACHE_NAME = 'cupra-hybrid-tracker-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon.svg'
+  '/logo.png'
 ];
 
-// Installazione del Service Worker
+// Installazione: Cache immediata degli asset statici
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Attivazione e pulizia vecchie cache
+// Attivazione: Pulizia cache vecchie
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -33,28 +33,27 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Intercettazione richieste di rete
+// Fetch: Strategia Network-First per navigazione, Cache-First per asset
 self.addEventListener('fetch', (event) => {
-  // Per le chiamate API o esterne, usa la rete. Per i file statici, usa la cache prima.
-  if (event.request.method !== 'GET') return;
+  // Gestione speciale per la navigazione (HTML)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
 
+  // Per gli altri asset (immagini, script, ecc.)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // Se è in cache, restituiscilo, ma aggiorna la cache in background (Stale-while-revalidate)
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // Aggiorna la cache solo se la richiesta è valida
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
+      // Restituisci la cache se c'è, altrimenti vai in rete
+      return cachedResponse || fetch(event.request).then((networkResponse) => {
+        // Opzionale: cache dinamica delle nuove risorse visitate
         return networkResponse;
-      }).catch(() => {
-        // Se siamo offline e non c'è rete, non fare nulla (il cachedResponse verrà restituito)
       });
-
-      return cachedResponse || fetchPromise;
     })
   );
 });
